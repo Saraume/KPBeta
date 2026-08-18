@@ -12,17 +12,21 @@ import concurrent.futures as cf
 import re
 import write_csv
 import modifi_json
+import ksd_postprocess
 from download_portrait import download_portrait
 
 # base urls (original)
 base_url = dict(soul={}, kamihime={}, eidolon={})
-base_url['kamihime']['info'] = 'https://r.kamihimeproject.net/v1/characters/'
-base_url['kamihime']['scenes'] = 'https://r.kamihimeproject.net/v1/gacha/harem_episodes/characters/'
-base_url['eidolon']['info'] = 'https://r.kamihimeproject.net/v1/summons/'
-base_url['eidolon']['scenes'] = 'https://r.kamihimeproject.net/v1/gacha/harem_episodes/summons/'
-base_url['episode'] = 'https://r.kamihimeproject.net/v1/episodes/'
-base_url['scene'] = 'https://r.kamihimeproject.net/v1/scenarios/'
-static_base = 'https://static-r.kamihimeproject.net/scenarios/'
+base_url['kamihime']['info'] = 'https://r.kamihimeproject.net/v1/characters/' # https://gnkh-api-r.prod.nkh.dmmgames.com/v1/characters/
+base_url['kamihime']['scenes'] = 'https://r.kamihimeproject.net/v1/gacha/harem_episodes/characters/' # https://gnkh-api-r.prod.nkh.dmmgames.com/v1/gacha/harem_episodes/characters/
+base_url['eidolon']['info'] = 'https://r.kamihimeproject.net/v1/summons/' # https://gnkh-api-r.prod.nkh.dmmgames.com/v1/summons/
+base_url['eidolon']['scenes'] = 'https://r.kamihimeproject.net/v1/gacha/harem_episodes/summons/' # https://gnkh-api-r.prod.nkh.dmmgames.com/v1/gacha/harem_episodes/summons/
+base_url['episode'] = 'https://r.kamihimeproject.net/v1/episodes/' # https://gnkh-api-r.prod.nkh.dmmgames.com/v1/episodes/  
+base_url['scene'] = 'https://r.kamihimeproject.net/v1/scenarios/' # https://gnkh-api-r.prod.nkh.dmmgames.com/v1/scenarios/
+static_base = 'https://static-r.kamihimeproject.net/scenarios/' # https://gnkh-resource-r.prod.nkh.dmmgames.com/scenarios/
+
+# https://r.kamihimeproject.net/v1/harem_scenes/2608_harem-character 拾ったけどこれ何？　https://r.kamihimeproject.net/v1/scenarios/2608_harem-character と同義 Harem v2が実装されたときにこちらに切り替わった？
+
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -65,6 +69,12 @@ ADV_TYPES = {
         "rank": "Burst",
         "folder": "Other",
         "dir_name": "(バースト{ep_id})"
+    },
+    "concierge": {
+        "suffix": "harem-concierge",
+        "rank": "Concierge",
+        "folder": "Other",
+        "dir_name": "(コンシェルジュ{ep_id})"
     }
 }
 
@@ -155,7 +165,7 @@ def generate_eidolon_ids(latest_dict: dict):
 
 def generate_adv_episode_ids(latest: dict, adv_type: str):
     """
-    adv_type: 'soul' | 'memorial' | 'burst'
+    adv_type: 'soul' | 'memorial' | 'burst' | 'concierge'
     return: list[int] episode_id list
     """
 
@@ -174,7 +184,7 @@ def generate_adv_episode_ids(latest: dict, adv_type: str):
         base = 8000
         return [base + i for i in range(1, count + 1)]
 
-    # Memorial / Burst: 1 から開始
+    # Memorial / Burst / Concierge: 1 から開始
     return list(range(1, count + 1))
 
 # -----------------------------
@@ -400,18 +410,50 @@ def process_kamihime_id(kh_id, s, headers, save_root):
             logging.info("No scenario_path for %s", file_name)
             continue
         ks_url = static_base + scenario_path
+
         try:
             rsc = s.get(ks_url, headers=headers, verify=False, timeout=20)
         except Exception as e:
             logging.error("Failed to get static %s : %s", ks_url, e)
             continue
+
+        # ==================================================
+        # Helix fallback:
+        # scenario.json が無い場合 gameData.ksd を試す
+        # ==================================================
         if rsc.status_code != 200:
-            logging.error("Static file not found %s", ks_url)
-            continue
-        # determine extension and save
-        is_json = scenario_path.endswith('.json')
-        ext = 'json' if is_json else 'ks'
-        # create save folder
+
+            logging.warning(
+                "Scenario file missing (%s). Trying gameData.ksd fallback...",
+                ks_url
+            )
+
+            # scenario.json → gameData.ksd
+            ksd_path = re.sub(r'[^/]+$', 'gameData.ksd', scenario_path)
+            ksd_url = static_base + ksd_path
+
+            try:
+                rsc = s.get(ksd_url, headers=headers, verify=False, timeout=20)
+            except Exception as e:
+                logging.error("Fallback gameData.ksd failed %s : %s", ksd_url, e)
+                continue
+
+            if rsc.status_code != 200:
+                logging.error(
+                    "Both scenario and gameData.ksd missing: %s / %s",
+                    ks_url,
+                    ksd_url
+                )
+                continue
+
+            # fallback 成功
+            ext = "ksd"
+
+        else:
+            # 通常処理
+            is_json = scenario_path.endswith('.json')
+            ext = 'json' if is_json else 'ks'
+
         save_file = os.path.join(save_dir, f"{file_name}_script.{ext}")
         
         # CSV用のデータ格納処理
@@ -438,7 +480,6 @@ def process_kamihime_id(kh_id, s, headers, save_root):
             logging.error("Failed to save static %s : %s", save_file, e)
             continue
 
-    logging.info(f"{kh_id} - {name} was downloaded successfully")
     return csv_row
 
 
@@ -576,7 +617,6 @@ def process_eidolon_id(eid_id, s, headers, save_root):
             logging.error("Failed to save %s : %s", save_file, e)
             continue
     
-    logging.info(f"{eid_id} - {name} was downloaded successfully")
     return csv_row
 
 def process_adv_episode_id(ep_id: int, adv_type: str, s, headers, save_root):
@@ -630,7 +670,7 @@ def process_adv_episode_id(ep_id: int, adv_type: str, s, headers, save_root):
             char_id=ep_id,
             char_name=dir_name
         )
-    if adv_type in ("memorial", "burst"):
+    if adv_type in ("memorial", "burst", "concierge"):
         download_portrait(
             char_type=adv_type,
             char_id=ep_id,
@@ -707,7 +747,6 @@ def process_adv_episode_id(ep_id: int, adv_type: str, s, headers, save_root):
     if ep3_id:
         csv_row["EP3ID"] = ep3_id
     
-    logging.info(f"{adv_type}({ep_id}) was downloaded successfully")
     return csv_row
 
 # -----------------------------
@@ -737,6 +776,7 @@ def run_download_json(
             "soul": 0,
             "memorial": 0,
             "burst": 0,
+            "concierge": 0
         }
     }
 
@@ -757,7 +797,6 @@ def run_download_json(
         logging.info("Generating Kamihime ID list from latest.txt ...")
         kh_list = generate_kamihime_ids(latest_dict)     # latestから探索するIDを抽出
         kh_ids = [tpl[2] for tpl in kh_list]
-        logging.info(f"Kamihime ids to try: {len(kh_ids)}")
         with cf.ThreadPoolExecutor(max_workers=thread_num) as exc:
             futures = [exc.submit(process_kamihime_id, kh, s, headers, save_root) for kh in kh_ids]
             for fut in cf.as_completed(futures):
@@ -776,7 +815,6 @@ def run_download_json(
         logging.info("Generating Eidolon ID list from latest.txt ...")
         eid_list = generate_eidolon_ids(latest_dict)
         eid_ids = [tpl[2] for tpl in eid_list]
-        logging.info(f"Eidolon ids to try: {len(eid_ids)}")
         with cf.ThreadPoolExecutor(max_workers=thread_num) as exc:
             futures = [exc.submit(process_eidolon_id, eid, s, headers, save_root) for eid in eid_ids]
             for fut in cf.as_completed(futures):
@@ -794,7 +832,7 @@ def run_download_json(
     # Soul Skin
     if 'soul' in target:
         ep_ids = generate_adv_episode_ids(latest_dict, 'soul')
-        logging.info(f"Soul Skin episodes to try: {len(ep_ids)}")
+        # logging.info(f"Soul Skin episodes to try: {len(ep_ids)}")
 
         with cf.ThreadPoolExecutor(max_workers=thread_num) as exc:
             futures = [
@@ -816,7 +854,7 @@ def run_download_json(
     # Memorial
     if 'memorial' in target:
         ep_ids = generate_adv_episode_ids(latest_dict, 'memorial')
-        logging.info(f"memorial episodes to try: {len(ep_ids)}")
+        # logging.info(f"memorial episodes to try: {len(ep_ids)}")
 
         with cf.ThreadPoolExecutor(max_workers=thread_num) as exc:
             futures = [
@@ -838,7 +876,7 @@ def run_download_json(
     # Burst
     if 'burst' in target:
         ep_ids = generate_adv_episode_ids(latest_dict, 'burst')
-        logging.info(f"burst episodes to try: {len(ep_ids)}")
+        # logging.info(f"burst episodes to try: {len(ep_ids)}")
 
         with cf.ThreadPoolExecutor(max_workers=thread_num) as exc:
             futures = [
@@ -856,6 +894,28 @@ def run_download_json(
                     logging.error("Error in burst worker: %s", e)
                     result["success"] = False
                     result["errors"].append(str(e))
+    
+    # Concierge
+    if 'concierge' in target:
+        ep_ids = generate_adv_episode_ids(latest_dict, 'concierge')
+        # logging.info(f"concierge episodes to try: {len(ep_ids)}")
+
+        with cf.ThreadPoolExecutor(max_workers=thread_num) as exc:
+            futures = [
+                exc.submit(process_adv_episode_id, ep_id, 'concierge', s, headers, save_root)
+                for ep_id in ep_ids
+            ]
+            for fut in cf.as_completed(futures):
+                try:
+                    res = fut.result()
+                    if isinstance(res, dict):
+                        csv_rows.append(res)
+                        result["counts"]["concierge"] += 1
+                        
+                except Exception as e:
+                    logging.error("Error in concierge worker: %s", e)
+                    result["success"] = False
+                    result["errors"].append(str(e))
 
     write_csv.write_rows(csv_rows)
     logging.info("CSV written via write_csv.py")
@@ -866,6 +926,16 @@ def run_download_json(
             modifi_json.process_root(save_root)
         except Exception:
             logging.exception("JSON modification failed")
+
+    assets_root = os.path.join(
+        BASE_DIR,
+        "assets"
+    )
+
+    ksd_postprocess.process_root(
+        save_root,
+        assets_root
+    )
     
     # message 組み立て
     result["message"] = (
@@ -874,7 +944,8 @@ def run_download_json(
         f"Eidolon: {result['counts']['eidolon']}\n"
         f"Soul: {result['counts']['soul']}\n"
         f"Memorial: {result['counts']['memorial']}\n"
-        f"Burst: {result['counts']['burst']}"
+        f"Burst: {result['counts']['burst']}\n"
+        f"Concierge: {result['counts']['concierge']}\n"
     )
 
     return result

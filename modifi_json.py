@@ -48,8 +48,19 @@ def process_json_file(file_path: str):
         parsed = json.loads(cleaned)
 
         # ④ scenario ラップ
-        if not is_wrapped_as_scenario(parsed):
+        # Helix形式なら何もしない
+        if (
+            isinstance(parsed, dict)
+            and "version" in parsed
+            and "root" in parsed
+            and "assets" in parsed
+        ):
+            wrapped = parsed
+
+        # 旧形式
+        elif not is_wrapped_as_scenario(parsed):
             wrapped = {"scenario": parsed}
+
         else:
             wrapped = parsed
 

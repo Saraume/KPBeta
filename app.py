@@ -45,7 +45,7 @@ class DownloadApp(tk.Tk):
         ttk.Label(self, text="Download Target").grid(row=1, column=0, sticky="w", **pad)
 
         self.target_var = tk.StringVar(value="kamihime")
-        targets = ["kamihime", "eidolon", "soul", "memorial", "burst", "all"]
+        targets = ["kamihime", "eidolon", "soul", "memorial", "burst", "concierge", "all"]
 
         self.target_combo = ttk.Combobox(
             self, values=targets, textvariable=self.target_var, state="readonly", width=20
@@ -199,7 +199,7 @@ class DownloadApp(tk.Tk):
         target = self.target_var.get()
 
         if target == "all":
-            target_list = ["kamihime", "eidolon", "soul", "memorial", "burst"]
+            target_list = ["kamihime", "eidolon", "soul", "memorial", "burst", "concierge"]
         else:
             target_list = [target]
         save_root = self.save_root_entry.get().strip()

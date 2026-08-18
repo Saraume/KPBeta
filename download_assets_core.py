@@ -15,12 +15,13 @@ logging.basicConfig(
     level='INFO',
     format='[%(levelname)s] %(asctime)s: %(message)s'
 )
+from ksd_postprocess import fix_ogg_files
 
 base_url = dict()
-base_url['fgimage'] = 'https://static-r.kamihimeproject.net/scenarios/fgimage/'
-base_url['bgm'] = 'https://static-r.kamihimeproject.net/scenarios/bgm/'
-base_url['bg'] = 'https://static-r.kamihimeproject.net/scenarios/bgimage/'
-base_url['scenarios'] = 'https://static-r.kamihimeproject.net/scenarios/'
+base_url['fgimage'] = 'https://static-r.kamihimeproject.net/scenarios/fgimage/' # https://gnkh-resource-r.prod.nkh.dmmgames.com/scenarios/fgimage/
+base_url['bgm'] = 'https://static-r.kamihimeproject.net/scenarios/bgm/' # https://gnkh-resource-r.prod.nkh.dmmgames.com/scenarios/bgm/
+base_url['bg'] = 'https://static-r.kamihimeproject.net/scenarios/bgimage/' # https://gnkh-resource-r.prod.nkh.dmmgames.com/scenarios/bgimage/
+base_url['scenarios'] = 'https://static-r.kamihimeproject.net/scenarios/' # https://gnkh-resource-r.prod.nkh.dmmgames.com/scenarios/ first.ksもこれ
 
 def get_base_dir():
     if getattr(sys, 'frozen', False):
@@ -97,7 +98,7 @@ def download_script(script_path, url):
         return False
 
 
-def download_asset(link, resource_directory):
+def download_asset(link, resource_directory, downloaded_ogg_files=None):
     link = link.replace(' ', '')
     folder = os.path.join(asset_folder, resource_directory)
     dst = os.path.join(folder, link[link.rfind('/')+1:]).replace('_pc_h', '')
@@ -107,7 +108,7 @@ def download_asset(link, resource_directory):
         os.mkdir(folder)
 
     if os.path.exists(dst):
-        logging.warning('%s already exists' % dst)
+        pass
     else:
         if link in ignore_links:
             logging.warning('Ignore %s' % link)
@@ -116,10 +117,12 @@ def download_asset(link, resource_directory):
         try:
             r = s.get(link, headers=headers, verify=False, timeout=req_timeout)
             if r.status_code == 200 and not r.text.startswith('<html>'):
-                logging.info("Saved %s" % link)
                 with open(dst, 'wb') as f:
                     for chunk in r:
                         f.write(chunk)
+                    if (downloaded_ogg_files is not None and dst.lower().endswith(".ogg")):
+                        downloaded_ogg_files.append(dst)
+
             else:
                 logging.error("Error: %s" % link)
                 logging.error("%s (%s)" % (link, r.status_code))
@@ -130,16 +133,19 @@ def download_asset(link, resource_directory):
             retry_links.append(link, resource_directory)
             logging.error("%s: %s" % (link, e))
 
-
-def download_assets(links, resource_directory=''):
+def download_assets(
+    links,
+    resource_directory='',
+    downloaded_ogg_files=None
+):
     with cf.ThreadPoolExecutor(max_workers=thread_num) as executor:
-        futures = [executor.submit(download_asset, link, resource_directory) for link in links]
+        futures = [executor.submit(download_asset, link, resource_directory, downloaded_ogg_files) for link in links]
 
         for _ in cf.as_completed(futures):
             pass
 
 
-def download_scenario_assets(character, scenario_type, filename, data, data_directory):
+def download_scenario_assets(character, scenario_type, filename, data, data_directory, downloaded_ogg_files):
     script_file = '%s_script.ks' % filename.replace('.json', '').replace('.ks', '')
     script_path = os.path.join(data_directory, scenario_type, character, script_file)
 
@@ -165,17 +171,17 @@ def download_scenario_assets(character, scenario_type, filename, data, data_dire
         links.append(base_url['bg'] + re.sub(r"(.*)(-.*)",
                                              r"\1_pc_h\2", match.group(1)))
 
-    download_assets(links)
+    download_assets(links, '', downloaded_ogg_files)
 
     links = []
     for match in re.finditer(r'\[playse.*storage="(.*)"', script):
         links.append(base_url['scenarios'] + '/'.join(
             data['scenario_path'].split('/')[:3]) + '/sound/' + match.group(1))
 
-    download_assets(links, data['resource_directory'])
+    download_assets(links, data["resource_directory"], downloaded_ogg_files)
 
 
-def download_hscene_assets(character, scenario_type, filename, data, data_directory):
+def download_hscene_assets(character, scenario_type, filename, data, data_directory, downloaded_ogg_files):
     script_file = f"{filename.replace('.json', '').replace('.ks', '')}_script.json"
     script_path = os.path.join(data_directory, scenario_type, character, script_file)
 
@@ -220,7 +226,7 @@ def download_hscene_assets(character, scenario_type, filename, data, data_direct
                     links.append(f"{base_url['scenarios']}{resource_path}/{part['voice']}")
 
     # アセットをダウンロード
-    download_assets(links, data['resource_directory'])
+    download_assets(links, data["resource_directory"], downloaded_ogg_files)
 
 
 # ---------------------------------------Start-------------------------------------------
@@ -229,34 +235,40 @@ def run_download_assets(
     data_directory: str
 ) -> dict:
     
-
     logging.info("Start download")
     
     if not os.path.exists(asset_folder):
         os.mkdir(asset_folder)
 
+    downloaded_ogg_files = []
+
     for scenario_type in os.listdir(data_directory):
         for character in os.listdir(os.path.join(data_directory, scenario_type)):
             scenarios = os.listdir(os.path.join(data_directory, scenario_type, character))
             for filename in scenarios:
+                # JSON以外は無視
+                if not filename.lower().endswith(".json"):
+                    continue
                 if '_script' in filename:
                     continue
-
-                logging.info(character + " " + filename)
 
                 with open(os.path.join(data_directory, scenario_type, character, filename), encoding="utf-8") as file:
                     data = json.load(file)
 
                 if data['scenario_path'].endswith('.ks'):
-                    download_scenario_assets(character, scenario_type, filename, data, data_directory)
+                    download_scenario_assets(character, scenario_type, filename, data, data_directory, downloaded_ogg_files)
                 else:
-                    download_hscene_assets(character, scenario_type, filename, data, data_directory)
+                    download_hscene_assets(character, scenario_type, filename, data, data_directory, downloaded_ogg_files)
 
     if len(ignore_links) != ignore_links_len:
         # Write new ignore links to file
         with open(ignore_file, 'a', encoding="utf-8") as f:
             for link in ignore_links[ignore_links_len:]:
                 f.write(link + '\n')
+    
+    logging.info("Encoding %d ogg files...", len(downloaded_ogg_files))
+
+    fix_ogg_files(list(set(downloaded_ogg_files)))
 
     return {
         "success": True,

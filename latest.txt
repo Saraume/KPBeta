@@ -1,0 +1,50 @@
+#Primal_kamihime
+kamihime_0: 100
+
+#SSR_kamihime
+kamihime_5: 600
+
+#SR_kamihime
+kamihime_6: 250
+
+#R_kamihime
+kamihime_7: 150
+
+#Heavenly_Awaking
+kamihime_9: 30
+
+#Primal_eidolon
+eidolon_0: 50
+
+#Kaiserdragoon
+eidolon_0_216: 6
+
+#Bugbear
+eidolon_2: 5
+
+#Gacha_eidolon
+eidolon_5: 90
+
+#Event_eidolon
+eidolon_6: 200
+
+#Lilim
+eidolon_9_05: 7
+
+#Guardian
+eidolon_9_2: 7
+
+#Machinebeast
+eidolon_9_51: 6
+
+#Soul_skin
+soul: 100
+
+#Memorial
+memorial: 90
+
+#Burst_skin
+burst: 30
+
+#Concierge
+concierge: 30

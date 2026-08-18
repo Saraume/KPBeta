@@ -48,31 +48,45 @@ def _make_key(row):
 
 
 def write_rows(rows):
-    """
-    rows: list[dict]
-    CSV_FIELDS に基づいて index.csv に書き込む
-    """
     if not rows:
         return
 
     with _csv_lock:
-        existing = _load_existing()
 
-        for row in rows:
-            key = _make_key(row)
-            old = existing.get(key, {})
+        existing_keys = set()
 
-            merged = {}
-            for field in CSV_FIELDS:
-                val = row.get(field, "")
-                val = normalize_for_csv(val)
-                if val:
-                    merged[field] = val
-                else:
-                    merged[field] = old.get(field, "")
-            existing[key] = merged
+        if os.path.exists(INDEX_PATH):
+            with open(INDEX_PATH, "r", encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f)
 
-        _save(existing)
+                for row in reader:
+                    existing_keys.add(_make_key(row))
+
+        file_exists = os.path.exists(INDEX_PATH)
+
+        with open(INDEX_PATH, "a", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
+
+            if not file_exists:
+                writer.writeheader()
+
+            for row in rows:
+                key = _make_key(row)
+
+                # 既に存在するなら追加しない
+                if key in existing_keys:
+                    continue
+
+                clean_row = {}
+
+                for field in CSV_FIELDS:
+                    clean_row[field] = normalize_for_csv(
+                        row.get(field, "")
+                    )
+
+                writer.writerow(clean_row)
+
+                existing_keys.add(key)
 
 
 def _save(data_dict):

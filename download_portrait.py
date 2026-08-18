@@ -84,6 +84,9 @@ def build_url(type_str: str, x: str) -> str:
     final = kamihime_encrypt(data)
     path = get_path(final, type_str)
     return "https://static-r.kamihimeproject.net/resources/pc/normal/" + path
+# https://gnkh-resource-r.prod.nkh.dmmgames.com/resources/pc/normal/
+# https://gnkh-resource-r.prod.nkh.dmmgames.com/resources/pc/normal/1ef/750/8b12ce67eb09c39d5eab986c2a64547a510d683a1d1ef750.jpg
+# https://static-r.kamihimeproject.net/resources/pc/normal/75d/25c/2c93eebb4a79e124bc0f15fd6ea534d9169c384ae475d25c.jpg
 
 # =============================
 # ダウンロード処理
