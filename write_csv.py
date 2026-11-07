@@ -15,7 +15,8 @@ CSV_FIELDS = [
     "EP1ID", "EP1Title", "EP1Info",
     "EP2ID", "EP2Title", "EP2Info",
     "EP3ID", "EP4ID", "EP4Title",
-    "EP4Info", "EP5ID", "Awaken"
+    "EP4Info", "EP5ID", "Awaken",
+    "Harem2"
 ]
 BASE_DIR = get_base_dir()
 INDEX_PATH = os.path.join(BASE_DIR, "index.csv")
@@ -54,15 +55,25 @@ def write_rows(rows):
     with _csv_lock:
 
         existing_keys = set()
+        file_exists = os.path.exists(INDEX_PATH)
 
-        if os.path.exists(INDEX_PATH):
+        if file_exists:
             with open(INDEX_PATH, "r", encoding="utf-8", newline="") as f:
                 reader = csv.DictReader(f)
+                existing_rows = list(reader)
 
-                for row in reader:
-                    existing_keys.add(_make_key(row))
+            if reader.fieldnames != CSV_FIELDS:
+                with open(INDEX_PATH, "w", encoding="utf-8", newline="") as f:
+                    writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
+                    writer.writeheader()
+                    for row in existing_rows:
+                        writer.writerow({
+                            field: normalize_for_csv(row.get(field, ""))
+                            for field in CSV_FIELDS
+                        })
 
-        file_exists = os.path.exists(INDEX_PATH)
+            for row in existing_rows:
+                existing_keys.add(_make_key(row))
 
         with open(INDEX_PATH, "a", encoding="utf-8", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)

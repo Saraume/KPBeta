@@ -2,19 +2,19 @@
 kamihime_0: 100
 
 #SSR_kamihime
-kamihime_5: 600
+kamihime_5: 0
 
 #SR_kamihime
-kamihime_6: 250
+kamihime_6: 5
 
 #R_kamihime
-kamihime_7: 150
+kamihime_7: 5
 
 #Heavenly_Awaking
-kamihime_9: 30
+kamihime_9: 0
 
 #Primal_eidolon
-eidolon_0: 50
+eidolon_0: 5
 
 #Kaiserdragoon
 eidolon_0_216: 6
@@ -23,10 +23,10 @@ eidolon_0_216: 6
 eidolon_2: 5
 
 #Gacha_eidolon
-eidolon_5: 90
+eidolon_5: 9
 
 #Event_eidolon
-eidolon_6: 200
+eidolon_6: 20
 
 #Lilim
 eidolon_9_05: 7
@@ -38,13 +38,13 @@ eidolon_9_2: 7
 eidolon_9_51: 6
 
 #Soul_skin
-soul: 100
+soul: 10
 
 #Memorial
 memorial: 90
 
 #Burst_skin
-burst: 30
+burst: 3
 
 #Concierge
-concierge: 30
+concierge: 3

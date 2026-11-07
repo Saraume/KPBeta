@@ -7,7 +7,12 @@ from tkinter import ttk, filedialog, messagebox
 import threading
 
 from download_json_core import run_download_json
-from download_assets_core import run_download_assets
+from download_assets_core import (
+    DEFAULT_ASSET_BASE_URL,
+    NUTAKU_ASSET_BASE_URL,
+    run_download_assets,
+)
+from download_nutaku import run_download_nutaku
 
 def get_base_dir():
     if getattr(sys, 'frozen', False):
@@ -28,7 +33,7 @@ class DownloadApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("KPBeta Downloader")
-        self.geometry("600x420")
+        self.geometry("600x450")
         self.resizable(False, False)
         self._build_widgets()
         self._setup_logging()
@@ -41,27 +46,50 @@ class DownloadApp(tk.Tk):
         self.session_entry = ttk.Entry(self, width=70)
         self.session_entry.grid(row=0, column=1, columnspan=2, **pad)
 
+        # ---- Download service ----
+        ttk.Label(self, text="Download Service").grid(row=1, column=0, sticky="w", **pad)
+
+        self.service_var = tk.StringVar(value="DMM")
+        self.service_combo = ttk.Combobox(
+            self,
+            values=["DMM", "Nutaku"],
+            textvariable=self.service_var,
+            state="readonly",
+            width=20
+        )
+        self.service_combo.grid(row=1, column=1, sticky="w", **pad)
+        self.service_combo.bind("<<ComboboxSelected>>", self._on_service_changed)
+
         # ---- Target ----
-        ttk.Label(self, text="Download Target").grid(row=1, column=0, sticky="w", **pad)
+        ttk.Label(self, text="Download Target").grid(row=2, column=0, sticky="w", **pad)
 
         self.target_var = tk.StringVar(value="kamihime")
-        targets = ["kamihime", "eidolon", "soul", "memorial", "burst", "concierge", "all"]
+        self.dmm_targets = [
+            "kamihime", "eidolon", "soul", "memorial", "burst", "concierge", "all"
+        ]
+        self.nutaku_targets = [
+            "kamihime", "eidolon", "soul", "memorial", "burst", "concierge", "all"
+        ]
 
         self.target_combo = ttk.Combobox(
-            self, values=targets, textvariable=self.target_var, state="readonly", width=20
+            self,
+            values=self.dmm_targets,
+            textvariable=self.target_var,
+            state="readonly",
+            width=20
         )
-        self.target_combo.grid(row=1, column=1, sticky="w", **pad)
+        self.target_combo.grid(row=2, column=1, sticky="w", **pad)
 
         # ---- Save Root ----
-        ttk.Label(self, text="Save Folder").grid(row=2, column=0, sticky="w", **pad)
+        ttk.Label(self, text="Save Folder").grid(row=3, column=0, sticky="w", **pad)
 
         self.save_root_entry = ttk.Entry(self, width=50)
-        self.save_root_entry.grid(row=2, column=1, sticky="w", **pad)
+        self.save_root_entry.grid(row=3, column=1, sticky="w", **pad)
         default_root = self._get_default_save_root()
         self.save_root_entry.insert(0, default_root)
 
         ttk.Button(self, text="Browse...", command=self._browse_folder)\
-            .grid(row=2, column=2, sticky="w", **pad)
+            .grid(row=3, column=2, sticky="w", **pad)
 
         # ---- Options ----
         self.modify_json_var = tk.BooleanVar(value=True)
@@ -70,18 +98,18 @@ class DownloadApp(tk.Tk):
             text="Modify JSON (for Unity Player)",
             variable=self.modify_json_var
         )
-        self.modify_check.grid(row=3, column=1, sticky="w", **pad)
+        self.modify_check.grid(row=4, column=1, sticky="w", **pad)
         ttk.Button(
             self,
             text="Edit latest.txt",
             width=15,   # ← 文字数単位
             command=self.open_latest_editor
-        ).grid(row=3, column=2, padx=0, pady=5, sticky="w")
+        ).grid(row=4, column=2, padx=0, pady=5, sticky="w")
 
 
         # ---- Run & Assets Buttons ----
         btn_frame = ttk.Frame(self)
-        btn_frame.grid(row=4, column=0, columnspan=3, pady=5)
+        btn_frame.grid(row=5, column=0, columnspan=3, pady=5)
 
         self.run_button = ttk.Button(
             btn_frame,
@@ -100,10 +128,19 @@ class DownloadApp(tk.Tk):
         self.assets_button.pack(side="left", padx=5)
 
         # ---- Log / Result ----
-        ttk.Label(self, text="Result").grid(row=5, column=0, sticky="nw", **pad)
+        ttk.Label(self, text="Result").grid(row=6, column=0, sticky="nw", **pad)
 
         self.result_text = tk.Text(self, width=70, height=10, state="disabled")
-        self.result_text.grid(row=5, column=1, columnspan=2, **pad)
+        self.result_text.grid(row=6, column=1, columnspan=2, **pad)
+
+    def _on_service_changed(self, event=None):
+        del event
+        is_nutaku = self.service_var.get() == "Nutaku"
+        targets = self.nutaku_targets if is_nutaku else self.dmm_targets
+        self.target_combo.configure(values=targets)
+        if self.target_var.get() not in targets:
+            self.target_var.set("kamihime")
+        self.modify_check.configure(state="disabled" if is_nutaku else "normal")
 
     def _setup_logging(self):
         handler = TextHandler(self.result_text)
@@ -181,9 +218,12 @@ class DownloadApp(tk.Tk):
         # ---- 入力欄 ----
         self.session_entry.config(state=state)
         self.save_root_entry.config(state=state)
+        self.service_combo.config(state="disabled" if running else "readonly")
+        self.target_combo.config(state="disabled" if running else "readonly")
 
         # ---- チェックボックス・タブなど ----
-        self.modify_check.config(state=state)
+        modify_state = "disabled" if running or self.service_var.get() == "Nutaku" else "normal"
+        self.modify_check.config(state=modify_state)
 
         # ---- ステータス表示（あれば）----
         if hasattr(self, "status_label"):
@@ -195,11 +235,27 @@ class DownloadApp(tk.Tk):
     # -----------------------------
 
     def _on_run(self):
+        index_paths = (
+            os.path.join(BASE_DIR, "index.csv"),
+            os.path.join(BASE_DIR, "index_en.csv"),
+        )
+        if any(os.path.exists(path) for path in index_paths):
+            if not messagebox.askyesno(
+                "Index File Exists",
+                "An index file already exists. Do you want to continue?"
+            ):
+                return
+
         session = self.session_entry.get().strip()
+        service = self.service_var.get()
         target = self.target_var.get()
 
         if target == "all":
-            target_list = ["kamihime", "eidolon", "soul", "memorial", "burst", "concierge"]
+            target_list = (
+                ["kamihime", "eidolon", "soul", "memorial", "burst", "concierge"]
+                if service == "Nutaku"
+                else ["kamihime", "eidolon", "soul", "memorial", "burst", "concierge"]
+            )
         else:
             target_list = [target]
         save_root = self.save_root_entry.get().strip()
@@ -226,23 +282,37 @@ class DownloadApp(tk.Tk):
         # スレッドで実行（GUIフリーズ防止）
         thread = threading.Thread(
             target=self._run_download_thread,
-            args=(session, target_list, latest_dict, save_root, modify_json),
+            args=(service, session, target_list, latest_dict, save_root, modify_json),
             daemon=True
         )
 
         thread.start()
 
-    def _run_download_thread(self, session, target, latest_dict, save_root, modify_json):
+    def _run_download_thread(
+        self, service, session, target, latest_dict, save_root, modify_json
+    ):
         try:
-            result = run_download_json(
-                session=session,
-                target=target,
-                latest_dict=latest_dict,
-                save_root=save_root,
-                modify_json=modify_json
-            )
+            if service == "Nutaku":
+                result = run_download_nutaku(
+                    session=session,
+                    save_root=save_root,
+                    latest_path=LATEST_PATH,
+                    targets=target
+                )
+                msg = result.get(
+                    "message",
+                    f"Nutaku download completed. English scenarios: {result.get('rows', 0)}"
+                )
+            else:
+                result = run_download_json(
+                    session=session,
+                    target=target,
+                    latest_dict=latest_dict,
+                    save_root=save_root,
+                    modify_json=modify_json
+                )
+                msg = result.get("message", "Completed.")
 
-            msg = result.get("message", "Completed.")
             success = result.get("success", True)
 
             self.after(0, self._append_result, msg)
@@ -275,21 +345,30 @@ class DownloadApp(tk.Tk):
 
         t = threading.Thread(
             target=self._run_assets_thread,
-            args=(data_directory,),
+            args=(data_directory, self.service_var.get()),
             daemon=True
         )
         t.start()
 
-    def _run_assets_thread(self, data_directory):
+    def _run_assets_thread(self, data_directory, service):
         try:
+            asset_base_url = (
+                NUTAKU_ASSET_BASE_URL
+                if service == "Nutaku"
+                else DEFAULT_ASSET_BASE_URL
+            )
             result = run_download_assets(
-                data_directory=data_directory
+                data_directory=data_directory,
+                asset_base_url=asset_base_url
             )
 
             msg = result.get("message", "Assets download completed")
 
             self.after(0, self._append_result, msg)
-            self.after(0, messagebox.showinfo, "Completed", msg)
+            if result.get("success", True):
+                self.after(0, messagebox.showinfo, "Completed", msg)
+            else:
+                self.after(0, messagebox.showwarning, "Completed with warnings", msg)
 
         except Exception as e:
             self.after(0, messagebox.showerror, "Error", str(e))

@@ -265,6 +265,7 @@ def process_kamihime_id(kh_id, s, headers, save_root):
 
     TITLE_INFO_EP = {1, 2, 4}
     ep_no = 1
+    harem2 = False
 
     id_str = str(kh_id)
     url_info = base_url['kamihime']['info'] + id_str
@@ -338,7 +339,7 @@ def process_kamihime_id(kh_id, s, headers, save_root):
 
         # SSRは条件分岐
         elif rare == 'SSR':
-            if any(k in name for k in ['神化覚醒', '反心想', '純想悪', '心想昇華']):
+            if any(k in name for k in ['神化覚醒', '反心想', '純想悪', '心想昇華', '契晶']):
                 # これらは2話固定（既に2話リスト済み）
                 pass
             elif '神想真化' in name:
@@ -448,6 +449,7 @@ def process_kamihime_id(kh_id, s, headers, save_root):
 
             # fallback 成功
             ext = "ksd"
+            harem2 = True
 
         else:
             # 通常処理
@@ -479,6 +481,9 @@ def process_kamihime_id(kh_id, s, headers, save_root):
         except Exception as e:
             logging.error("Failed to save static %s : %s", save_file, e)
             continue
+
+    if harem2:
+        csv_row["Harem2"] = True
 
     return csv_row
 
@@ -949,4 +954,3 @@ def run_download_json(
     )
 
     return result
-
